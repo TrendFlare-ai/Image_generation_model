@@ -66,4 +66,4 @@ def query(payload):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port={os.getenv('PORT')})
+    uvicorn.run(app, host="127.0.0.1", port=int(os.getenv('PORT', 8000)))
