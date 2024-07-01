@@ -4,11 +4,14 @@ from typing import List
 from fastapi.responses import FileResponse
 import requests
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
 API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-headers = {"Authorization": "Bearer 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"}
+headers = {"Authorization": f"Bearer {os.getenv('HUGGINGFACE_API_KEY')}"}
 
 
 class GenerateImagesRequest(BaseModel):
@@ -55,7 +58,7 @@ async def get_image(image_name: str):
 
 
 def query(payload):
-    headers = {"Authorization": "Bearer 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"}
+    headers = {"Authorization": f"Bearer {os.getenv('HUGGINGFACE_API_KEY')}"}
     response = requests.post(API_URL, headers=headers, json=payload)
     response.raise_for_status()  # Raise an exception for HTTP errors
     return response.content
