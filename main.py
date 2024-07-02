@@ -1,3 +1,4 @@
+import base64
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,13 +8,16 @@ import requests
 import os
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
 app = FastAPI()
 
-API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-headers = {"Authorization": f"Bearer {os.getenv('HUGGINGFACE_API_KEY')}"}
-
+# Hugging Face API URLs and headers
+HUGGINGFACE_API_KEY = os.getenv('HUGGINGFACE_API_KEY')
+IMAGE_GENERATION_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+CAPTION_GENERATION_URL = 'https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct/v1/chat/completions'
+headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,9 +28,9 @@ app.add_middleware(
 )
 
 
-class GenerateImagesRequest(BaseModel):
+class GenerateRequest(BaseModel):
     prompt: str
-    styles: List[str]
+    styles: List[str] = []
 
 
 @app.get("/health-check")
@@ -35,28 +39,62 @@ async def health_check():
     return {"status": "ok"}
 
 
-@app.post("/generate-images")
-async def generate_images(request: GenerateImagesRequest):
+@app.post("/generate")
+async def generate(request: GenerateRequest):
     prompt = request.prompt
     styles = request.styles
-    print(prompt)
-    images_paths = []
+
+    # Initialize lists to hold image URLs and their corresponding captions
+    images_urls = []
+    captions = []
+
     for style in styles:
-        image_bytes = query({"inputs": f"{prompt} style {style}"})
+        # Generate image
+        image_bytes = query_image({"inputs": f"{prompt} style {style}"})
 
-        # Define the filename for the current style
-        filename = f"generated_image_{style}.jpg"
+        # Encode image in base64
+        encoded_image = base64.b64encode(image_bytes).decode("utf-8")
 
-        # Check if the directory exists, create it if not
-        os.makedirs("images", exist_ok=True)
+        # Prepare payload for image upload API
+        upload_payload = {
+            "key": os.getenv('IMAGE_KEY'),
+            "action": "upload",
+            "source": encoded_image,
+            "format": "json"
+        }
 
-        # Save the image to the local filesystem
-        with open(os.path.join("images", filename), "wb") as img_file:
-            img_file.write(image_bytes)
+        # Upload image to hosting service
+        upload_response = requests.post(
+            "https://freeimage.host/api/1/upload", data=upload_payload)
+        upload_data = upload_response.json()
 
-        images_paths.append(filename)
+        # Extract the URL from the response
+        image_url = upload_data.get('image', {}).get('url')
 
-    return {"images": images_paths}
+        if image_url:
+            images_urls.append(image_url)
+
+            # Generate caption for the current image
+            caption_payload = {
+                "model": "meta-llama/Meta-Llama-3-70B-Instruct",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": f"Generate a unique social media post short caption with tags for the image at {image_url}. The image was generated based on the prompt '{prompt}' with a focus on the '{style}' style. Please include hashtags relevant to the image content.Give only the caption and no extra text or quotation marks"
+                    }
+                ],
+                "max_tokens": 500,
+                "stream": False
+            }
+            caption_response = requests.post(
+                CAPTION_GENERATION_URL, headers=headers, json=caption_payload)
+            data = caption_response.json()
+            generated_caption = data["choices"][0]["message"]["content"].strip(
+            )
+            captions.append(generated_caption)
+
+    # Return image URLs and their corresponding captions
+    return {"images": images_urls, "captions": captions}
 
 
 @app.get("/images/{image_name}")
@@ -67,10 +105,10 @@ async def get_image(image_name: str):
     return FileResponse(image_path)
 
 
-def query(payload):
-    headers = {"Authorization": f"Bearer {os.getenv('HUGGINGFACE_API_KEY')}"}
-    response = requests.post(API_URL, headers=headers, json=payload)
-    response.raise_for_status()  # Raise an exception for HTTP errors
+def query_image(payload):
+    response = requests.post(IMAGE_GENERATION_URL,
+                             headers=headers, json=payload)
+    response.raise_for_status()
     return response.content
 
 
