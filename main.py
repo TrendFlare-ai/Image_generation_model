@@ -15,7 +15,7 @@ app = FastAPI()
 
 # Hugging Face API URLs and headers
 HUGGINGFACE_API_KEY = os.getenv('HUGGINGFACE_API_KEY')
-IMAGE_GENERATION_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+IMAGE_GENERATION_URL = "https://api-inference.huggingface.co/models/mann-e/Mann-E_Dreams"
 CAPTION_GENERATION_URL = 'https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct/v1/chat/completions'
 headers = {"Authorization": f"Bearer {HUGGINGFACE_API_KEY}"}
 
@@ -43,8 +43,6 @@ async def health_check():
 async def generate(request: GenerateRequest):
     prompt = request.prompt
     styles = request.styles
-
-    # Initialize lists to hold image URLs and their corresponding captions
     images_urls = []
     captions = []
 
